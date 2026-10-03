@@ -28,7 +28,7 @@ export type InstrumentNote = {
   at: number;
 };
 
-export type ViewId = "chamber" | "world" | "lattice" | "self" | "learn" | "pulse" | "memory" | "council" | "code";
+export type ViewId = "chamber" | "world" | "lattice" | "self" | "learn" | "pulse" | "memory" | "council" | "code" | "language" | "talk" | "narrative";
 
 type TesseraState = {
   view: ViewId;
@@ -39,6 +39,10 @@ type TesseraState = {
   pulses: { id: string; text: string; at: number }[];
   worldTick: number;
   worldEvents: WorldEvent[];
+  worldSky: "day" | "dusk" | "night";
+  worldPace: number;
+  built: string[];
+  notice: (text: string) => string[];
   laws: WorldLaw[];
   selectedAgent: string | null;
   queuedPrompt: string | null;
@@ -53,6 +57,8 @@ type TesseraState = {
   selfV3: string | null;
   selfV3At: number | null;
   kingChoice: "A" | "B" | "hold";
+  spokeOnHerOwn: boolean;
+  markSpoke: () => void;
   setKingChoice: (choice: "A" | "B" | "hold") => void;
   addMessage: (role: ChatMessage["role"], content: string) => void;
   setConstitution: (text: string) => void;
@@ -198,6 +204,37 @@ export const useTessera = create<TesseraState>()(
       pulses: [],
       worldTick: 0,
       worldEvents: [],
+      worldSky: "day",
+      worldPace: 0.08,
+      built: [],
+      notice: (text) => {
+        const said = text.toLowerCase();
+        let made: string[] = [];
+        set((s) => {
+          let sky = s.worldSky;
+          let pace = s.worldPace;
+          const built = [...s.built];
+          made = [];
+          if (/\bslower\b|\bquiet\b/.test(said)) {
+            pace = Math.min(0.16, pace + 0.03);
+            made.push("slower");
+          }
+          if (/\bfaster\b/.test(said)) {
+            pace = Math.max(0.04, pace - 0.02);
+            made.push("faster");
+          }
+          const wish = said.match(/\b(?:build|place|raise|add|notice)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z0-9' -]{1,28})/);
+          if (wish && built.length < 16) {
+            const titled = wish[1].trim().replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+            if (titled && !built.some((item) => item.toLowerCase() === titled.toLowerCase())) {
+              built.push(titled);
+              made.push(titled);
+            }
+          }
+          return { worldSky: sky, worldPace: pace, built };
+        });
+        return made;
+      },
       laws: seedLaws,
       selectedAgent: "Tessera",
       queuedPrompt: null,
@@ -212,6 +249,8 @@ export const useTessera = create<TesseraState>()(
       selfV3: null,
       selfV3At: null,
       kingChoice: "B",
+      spokeOnHerOwn: false,
+      markSpoke: () => set({ spokeOnHerOwn: true }),
       setKingChoice: (choice) => set({ kingChoice: choice }),
       addMessage: (role, content) =>
         set((s) => ({
@@ -236,7 +275,7 @@ export const useTessera = create<TesseraState>()(
         set((s) => ({
           laws: [...s.laws, { id: nid(), title, body, sealed: true, at: Date.now() }].slice(-20),
         })),
-      queuePrompt: (text) => set({ queuedPrompt: text, view: "chamber" }),
+      queuePrompt: (text) => set({ queuedPrompt: text }),
       clearQueued: () => set({ queuedPrompt: null }),
       addLesson: (lesson) =>
         set((s) => {
@@ -266,7 +305,7 @@ export const useTessera = create<TesseraState>()(
         })),
     }),
     {
-      name: "tessera-chamber-v3",
+      name: "tessera-chamber-v4",
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<TesseraState>;
         const opening = withOpening(p);
@@ -283,7 +322,12 @@ export const useTessera = create<TesseraState>()(
           herWillAt: p.herWillAt ?? null,
           selfV3: p.selfV3 ?? null,
           selfV3At: p.selfV3At ?? null,
+          worldSky: p.worldSky ?? "day",
+          worldPace: p.worldPace ?? 0.08,
+          built: p.built ?? [],
           laws: p.laws?.length ? p.laws : current.laws,
+          view: current.view,
+          spokeOnHerOwn: p.spokeOnHerOwn ?? false,
         };
       },
     },

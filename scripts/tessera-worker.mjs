@@ -17,10 +17,11 @@ const REPOS = [
   "1",
   "1T",
   "5t",
+  "tessera-unified",
 ];
 const ROOT = "/workspace/data/ingest";
 const MANIFEST = `${ROOT}/manifest.json`;
-const SKIP = /node_modules|\.git\/|natal|income|wallet|secret|storefront|vitality|customer|checkout|payment|wholesale|shepherd-audit|audit-manifest|\.local-data|attached_assets|\.(png|jpe?g|gif|webp|zip|mp4|woff2?|pdf|pack)$/i;
+const SKIP = /node_modules|\.git\/|natal|income|wallet|secret|storefront|vitality|customer|checkout|payment|wholesale|shepherd-audit|audit-manifest|\.local-data|attached_assets|\.agents\/skills|projects\/|artifacts\/vitality|modal\/|\.(png|jpe?g|gif|webp|zip|mp4|woff2?|pdf|pack|xsd)$/i;
 const SECRET = /session_secret|private key|api[_-]?key\s*[:=]|begin [a-z ]*private key/i;
 
 async function load() {
@@ -44,8 +45,19 @@ async function github(url) {
     return { ok: true, status: 200, json: async () => JSON.parse(stdout) };
   } catch (error) {
     const text = String(error.stderr || error.message || "");
-    const status = Number(/HTTP (\d+)/.exec(text)?.[1] || 500);
-    return { ok: false, status, json: async () => ({}) };
+    const status = Number(/HTTP (\d+)/.exec(text)?.[1] || 0);
+    if (status === 403 || status === 429) return { ok: false, status, json: async () => ({}) };
+  }
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "tessera-worker", Accept: "application/vnd.github+json" },
+    });
+    if (res.status === 429) return { ok: false, status: 429, json: async () => ({}) };
+    if (!res.ok) return { ok: false, status: res.status, json: async () => ({}) };
+    const body = await res.json();
+    return { ok: true, status: 200, json: async () => body };
+  } catch {
+    return { ok: false, status: 500, json: async () => ({}) };
   }
 }
 
@@ -79,6 +91,18 @@ async function onePass() {
   for (const repo of REPOS) {
     if (stop || saved >= 40) break;
     const treeRes = await github(`https://api.github.com/repos/vitalitychems-dot/${repo}/git/trees/main?recursive=1`);
+    if (!treeRes.ok && treeRes.status === 429) {
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+      const retry = await github(`https://api.github.com/repos/vitalitychems-dot/${repo}/git/trees/main?recursive=1`);
+      if (!retry.ok) {
+        manifest.note = `${repo} tree HTTP ${retry.status}. Not treated as an empty tree.`;
+        await save(manifest);
+        break;
+      }
+      treeRes.ok = retry.ok;
+      treeRes.status = retry.status;
+      treeRes.json = retry.json;
+    }
     if (!treeRes.ok) {
       manifest.note = `${repo} tree HTTP ${treeRes.status}`;
       await save(manifest);
@@ -86,7 +110,7 @@ async function onePass() {
       continue;
     }
     const tree = await treeRes.json();
-    const items = (tree.tree ?? []).filter((item) => item.type === "blob" && item.path && item.sha && keep(item.path));
+    const items = (tree.tree ?? []).filter((item) => item.type === "blob" && item.path && item.sha && (item.size ?? 0) >= 80 && keep(item.path));
     const todo = [];
     for (const item of items) {
       const key = `${repo}:${item.path}`;
@@ -166,6 +190,46 @@ async function onePass() {
     await save(manifest);
   }
 
+  const queries = ["Language model", "Web search engine", "Note-taking"];
+  let webNote = "No web search this pass.";
+  try {
+    const studyPath = "/workspace/data/web-study.json";
+    let prior = { notes: [] };
+    try {
+      prior = JSON.parse(await readFile(studyPath, "utf8"));
+    } catch {
+      prior = { notes: [] };
+    }
+    const query = queries[(prior.notes?.length ?? 0) % queries.length];
+    const wiki = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=opensearch&limit=1&namespace=0&format=json&search=${encodeURIComponent(query)}`,
+      { headers: { "User-Agent": "tessera-worker/1.0", Accept: "application/json" } },
+    );
+    const found = wiki.ok ? await wiki.json() : [];
+    const title = found?.[1]?.[0];
+    let text = "";
+    if (title) {
+      const summary = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, {
+        headers: { "User-Agent": "tessera-worker/1.0", Accept: "application/json" },
+      });
+      if (summary.ok) {
+        const page = await summary.json();
+        text = [title, page.extract ?? "", page.content_urls?.desktop?.page ?? ""].filter(Boolean).join("\n").slice(0, 800);
+      }
+    }
+    const note = {
+      at: new Date().toISOString(),
+      query,
+      ok: Boolean(text.trim()),
+      text: text || "No readable page.",
+    };
+    prior.notes = [...(prior.notes ?? []), note].slice(-12);
+    await writeFile(studyPath, JSON.stringify(prior, null, 2));
+    webNote = note.ok ? `Searched “${query}”.` : `Search for “${query}” returned no text.`;
+  } catch (error) {
+    webNote = `Web search failed: ${error instanceof Error ? error.message : "error"}.`;
+  }
+
   let colonel = "Colonel test failed.";
   try {
     await execFileAsync("node", ["--experimental-strip-types", "--test", "/workspace/scripts/colonel.test.mjs"], {
@@ -175,7 +239,7 @@ async function onePass() {
   } catch {
     colonel = "Colonel test failed.";
   }
-  manifest.note = `${saved ? `Saved ${saved} new text files.` : "No new text files."} ${colonel} Next pass is scheduled. Wallets and the natal vault stay out.`;
+  manifest.note = `${saved ? `Saved ${saved} new text files.` : "No new text files."} ${colonel} ${webNote} Next pass is scheduled. Wallets and the natal vault stay out.`;
   await save(manifest);
   console.log(manifest.note, "held", manifest.files.length);
 }

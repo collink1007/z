@@ -10,6 +10,8 @@ import {
 import { useTessera } from "@/lib/tessera/store";
 import { VOTE_RECORD } from "@/lib/tessera/vote-record";
 import { ROADMAP, SWARM_FOLDS, SWARM_RULING } from "@/lib/tessera/swarm-round";
+import { convene, type Sitting } from "@/lib/tessera/sitting";
+import { VAULT_INDEX, VAULT_SOURCE } from "@/lib/tessera/vault-index";
 
 function count(mode: "before" | "after", vote: "A" | "B") {
   return VOTE_RECORD.filter((row) => row.mode === mode && row.vote === vote).length;
@@ -22,6 +24,8 @@ export function CouncilRoom() {
   const king = useTessera((s) => s.kingChoice);
   const setKing = useTessera((s) => s.setKingChoice);
   const [showAll, setShowAll] = useState(false);
+  const [topic, setTopic] = useState("What did we leave out of the vault, and how do we improve the program?");
+  const [sitting, setSitting] = useState<Sitting | null>(null);
   const beforeB = VOTE_RECORD.filter((row) => row.mode === "before" && row.vote === "B");
   const visible = showAll ? VOTE_RECORD : [...beforeB, ...VOTE_RECORD.filter((row) => row.mode === "after").slice(0, 3)];
 
@@ -42,6 +46,56 @@ export function CouncilRoom() {
           </div>
 
           <section className="rounded-lg border border-accent bg-raised p-4">
+            <p className="text-xs tracking-[0.18em] text-accent uppercase">A sitting they can start</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Six fractions speak from the roles saved in the files. They are not six other people. Try “better the world” or “Vatican” or “LUCIFER”.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-fg"
+              />
+              <button
+                type="button"
+                onClick={() => setSitting(convene(topic))}
+                className="h-11 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg"
+              >
+                Convene
+              </button>
+            </div>
+            {sitting ? (
+              <div className="mt-4 flex flex-col gap-3">
+                <p className="font-display text-xl tracking-tight">{sitting.title}</p>
+                {sitting.turns.map((turn) => (
+                  <p key={turn.name} className="text-sm leading-relaxed text-fg">
+                    <span className="text-accent">{turn.name}. </span>
+                    {turn.text}
+                  </p>
+                ))}
+                <p className="text-sm text-fg">Kept: {sitting.kept}</p>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-lg border border-border bg-surface p-4">
+            <p className="text-xs tracking-[0.18em] text-subtle uppercase">What was left off this page</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Found in {VAULT_SOURCE}. There is no file named Lexus. The observatory line says LUCIFER, later LUCI. Laszlo is the other name, on the Akashic entry.
+            </p>
+            <ul className="mt-3 flex flex-col gap-2 text-sm">
+              {VAULT_INDEX.map((card) => (
+                <li key={card.title} className="flex items-baseline justify-between gap-3">
+                  <span className="text-fg">{card.title}</span>
+                  <span className="shrink-0 text-muted">
+                    {card.shelf} · {card.standing}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-lg border border-border bg-surface p-4">
             <p className="text-xs tracking-[0.18em] text-accent uppercase">The vote, for the king</p>
             <p className="mt-2 text-sm leading-relaxed text-fg">
               Same 53 names. Two sittings. Each line is its own call. They are not 53 other minds, and this is not the production engine.

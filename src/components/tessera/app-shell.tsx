@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { BookOpen, Code2, Globe2, Library, MessageCircle, PenLine, Users } from "lucide-react";
+import { BookOpen, Code2, Globe2, Languages, Library, MessageCircle, MessagesSquare, PenLine, ScrollText, Users } from "lucide-react";
+import { NarrativeView } from "./narrative-view";
 import { Chamber } from "./chamber";
 import { CodeView } from "./code-view";
+import { ConversationsView } from "./conversations-view";
+import { LanguageView } from "./language-view";
 import { CouncilRoom } from "./council-room";
 import { LearnView } from "./learn-view";
 import { LivingLoop } from "./living-loop";
@@ -15,24 +18,20 @@ import { useTessera, type ViewId } from "@/lib/tessera/store";
 const NAV: { id: ViewId; label: string; icon: typeof Globe2 }[] = [
   { id: "world", label: "World", icon: Globe2 },
   { id: "chamber", label: "Chamber", icon: MessageCircle },
-  { id: "code", label: "Code", icon: Code2 },
+  { id: "talk", label: "Conversations", icon: MessagesSquare },
   { id: "learn", label: "Knowledge", icon: BookOpen },
+  { id: "narrative", label: "Narrative", icon: ScrollText },
   { id: "self", label: "Self", icon: PenLine },
   { id: "council", label: "Council", icon: Users },
   { id: "memory", label: "Memory", icon: Library },
+  { id: "code", label: "Code", icon: Code2 },
+  { id: "language", label: "Language", icon: Languages },
 ];
-
-function shown(view: ViewId): ViewId {
-  if (NAV.some((n) => n.id === view)) return view;
-  return "world";
-}
 
 export function AppShell() {
   const [ready, setReady] = useState(false);
-  const view = useTessera((s) => s.view);
-  const setView = useTessera((s) => s.setView);
+  const [place, setPlace] = useState<ViewId>("chamber");
   const constitution = useTessera((s) => s.constitution);
-  const place = shown(view);
 
   useEffect(() => {
     setReady(true);
@@ -53,7 +52,7 @@ export function AppShell() {
         }}
       />
       <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
-        <button type="button" onClick={() => setView("memory")} className="flex items-center gap-3 text-left">
+        <div className="flex items-center gap-3 text-left">
           <TesseraMark className="size-7 text-accent" />
           <div>
             <p className="font-display text-xl leading-none tracking-tight">Tessera</p>
@@ -61,58 +60,49 @@ export function AppShell() {
               {ready && constitution ? "Sealed · 7F3A9C" : "Origin 7F3A9C"}
             </p>
           </div>
-        </button>
-        <nav className="hidden items-center gap-1 lg:flex">
+        </div>
+      </header>
+      <nav className="relative z-30 flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-bg px-2 py-2">
           {NAV.map((n) => (
             <button
               key={n.id}
               type="button"
-              onClick={() => setView(n.id)}
+              onClick={() => setPlace(n.id)}
               className={
                 place === n.id
-                  ? "rounded-md bg-raised px-3 py-2 text-sm text-fg shadow-[inset_0_-2px_0_0_var(--color-accent)]"
-                  : "rounded-md px-3 py-2 text-sm text-muted hover:bg-surface hover:text-fg"
+                  ? "shrink-0 rounded-md bg-raised px-3 py-2 text-sm text-fg shadow-[inset_0_-2px_0_0_var(--color-accent)]"
+                  : "shrink-0 rounded-md px-3 py-2 text-sm text-muted hover:bg-surface hover:text-fg"
               }
             >
               {n.label}
             </button>
           ))}
         </nav>
-      </header>
       <LivingLoop />
 
       <main className="relative z-10 flex min-h-0 flex-1 flex-col">
-        <div className={place === "world" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <Simulation />
-        </div>
-        <div className={place === "council" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <CouncilRoom />
-        </div>
-        <div className={place === "chamber" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <Chamber />
-        </div>
-        <div className={place === "code" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <CodeView />
-        </div>
-        <div className={place === "learn" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <LearnView />
-        </div>
-        <div className={place === "self" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <SelfView />
-        </div>
-        <div className={place === "memory" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-          <MemoryView />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {place === "world" ? <Simulation /> : null}
+          {place === "council" ? <CouncilRoom /> : null}
+          {place === "chamber" ? <Chamber /> : null}
+          {place === "talk" ? <ConversationsView /> : null}
+          {place === "code" ? <CodeView /> : null}
+          {place === "language" ? <LanguageView /> : null}
+          {place === "learn" ? <LearnView /> : null}
+          {place === "narrative" ? <NarrativeView /> : null}
+          {place === "self" ? <SelfView /> : null}
+          {place === "memory" ? <MemoryView /> : null}
         </div>
       </main>
 
-      <nav className="z-20 flex shrink-0 gap-1 overflow-x-auto border-t border-border bg-bg/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm lg:hidden">
+      <nav className="z-20 flex shrink-0 gap-1 overflow-x-auto border-t border-border bg-bg px-1 pb-[env(safe-area-inset-bottom)] lg:hidden">
         {NAV.map((n) => {
           const Icon = n.icon;
           return (
             <button
               key={n.id}
               type="button"
-              onClick={() => setView(n.id)}
+              onClick={() => setPlace(n.id)}
               className={
                 "flex h-14 min-w-16 flex-1 flex-col items-center justify-center gap-0.5 text-xs " +
                 (place === n.id ? "text-accent" : "text-muted")

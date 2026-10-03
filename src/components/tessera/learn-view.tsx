@@ -2,10 +2,14 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { speakAsTessera } from "@/lib/tessera/chat";
 import { FILE_LEDGER } from "@/lib/tessera/desk";
+import { IngestPanel } from "@/components/tessera/ingest-panel";
+import { OwnLabView } from "@/components/tessera/own-lab-view";
 import { VAULT } from "@/lib/tessera/opening";
 import { readPublicPage, searchWeb } from "@/lib/tessera/study";
 import { BIRTH_MARK, INSTRUMENT, ROADMAP, sovereigntyPillars, studyFor, vowCheck } from "@/lib/tessera/learning";
 import { GLYPH_LIMIT, readBirthMark } from "@/lib/tessera/glyphs";
+import { gradeSchool, SCHOOL_EXAM, SCHOOL_PASSAGES } from "@/lib/tessera/school";
+import { FATHER_ASKED, STUDIES, STUDIES_MISSING, STUDIES_SOURCE } from "@/lib/tessera/studies";
 import { useTessera } from "@/lib/tessera/store";
 
 export function LearnView() {
@@ -28,6 +32,8 @@ export function LearnView() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [exam, setExam] = useState<{ q: string; pass: boolean }[] | null>(null);
+  const [examText, setExamText] = useState("");
   const score = sovereigntyPillars({
     constitution,
     lessons: lessons.filter((l) => l.status === "sealed").length,
@@ -72,6 +78,40 @@ export function LearnView() {
       return;
     }
     addLesson({ text: result.text, status: "sealed" });
+  }
+
+  async function giveExam() {
+    if (pending) return;
+    setError(null);
+    setPending(true);
+    setExam(null);
+    const result = await speakAsTessera({
+      data: {
+        mode: "learn",
+        messages: [
+          {
+            role: "user",
+            content: `School exam. Answer each question in one sentence, using only the school passages in your instructions. If the passages do not say it, say so.\n\n${SCHOOL_EXAM.map((item, i) => `${i + 1}. ${item.q}`).join("\n")}`,
+          },
+        ],
+        constitution,
+        pulses: pulses.map((p) => p.text).slice(-2),
+        lessons: lessons.filter((l) => l.status === "sealed").map((l) => l.text).slice(-6),
+      },
+    });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const scored = gradeSchool(result.text);
+    setExamText(result.text);
+    setExam(scored);
+    const passed = scored.filter((row) => row.pass).length;
+    addLesson({
+      text: `REAL: School exam on the fetched pages. ${passed} of ${scored.length} answers contained the required words. The reply is not a new book.`,
+      status: "sealed",
+    });
   }
 
   async function readPage() {
@@ -122,6 +162,74 @@ export function LearnView() {
         <p className="mt-3 text-sm leading-relaxed text-muted">
           This is the knowledge already sealed, plus one more lesson each time you ask. After you publish, the same buttons still call her, as long as the instrument key is on the server. A closed page does not keep thinking. Natal records and cipher methods stay out.
         </p>
+        <div className="mt-6">
+          <section className="rounded-xl border border-border bg-surface p-5">
+            <p className="text-xs tracking-[0.18em] text-subtle uppercase">What Father asked</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-fg">{FATHER_ASKED}</p>
+          </section>
+        </div>
+        <div className="mt-6">
+          <section className="rounded-xl border border-border bg-surface p-5">
+            <p className="text-xs tracking-[0.18em] text-subtle uppercase">What the index names</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">{STUDIES_SOURCE}. {STUDIES_MISSING}</p>
+            <ul className="mt-3 flex flex-col gap-2 text-sm">
+              {STUDIES.map((item) => (
+                <li key={item.name}>
+                  <span className="text-fg">{item.name}. </span>
+                  <span className="text-muted">{item.hold}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+        <div className="mt-6">
+          <section className="rounded-xl border border-border bg-surface p-5">
+            <p className="text-xs tracking-[0.18em] text-subtle uppercase">School</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Five Wikipedia summaries and the opening of Plato’s Republic from Project Gutenberg. The rest of that book was not kept. No other PDF was downloaded.
+            </p>
+            <ul className="mt-3 flex flex-col gap-3 text-sm">
+              {SCHOOL_PASSAGES.map((passage) => (
+                <li key={passage.id}>
+                  <a className="text-accent" href={passage.url}>
+                    {passage.title}
+                  </a>
+                  <p className="mt-1 text-muted">{passage.text}</p>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => void giveExam()}
+              className="mt-4 h-11 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg disabled:opacity-40"
+            >
+              {pending ? "Asking…" : "Test her"}
+            </button>
+            {exam ? (
+              <div className="mt-4">
+                <p className="text-sm text-fg">
+                  {exam.filter((row) => row.pass).length} of {exam.length} checked out.
+                </p>
+                <ul className="mt-2 flex flex-col gap-1 text-sm">
+                  {exam.map((row) => (
+                    <li key={row.q} className="text-muted">
+                      {row.pass ? "Pass. " : "Miss. "}
+                      {row.q}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-fg">{examText}</p>
+              </div>
+            ) : null}
+          </section>
+        </div>
+        <div className="mt-6">
+          <OwnLabView />
+        </div>
+        <div className="mt-6">
+          <IngestPanel />
+        </div>
 
         <section className="mt-6 rounded-xl border border-border bg-surface p-5">
           <p className="text-xs tracking-[0.18em] text-subtle uppercase">Ledger</p>
